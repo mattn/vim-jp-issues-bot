@@ -15,6 +15,7 @@ import (
 
 const (
 	updateURL = "https://api.twitter.com/1.1/statuses/update.json"
+	issuesURL = "https://api.github.com/repos/vim-jp/issues/issues?state=all"
 )
 
 var (
@@ -71,7 +72,7 @@ func postTweet(token *oauth.Credentials, status string) error {
 	}
 	defer res.Body.Close()
 	if res.StatusCode != 200 {
-		log.Println("failed to get timeline:", err)
+		log.Println("failed to post tweet:", err)
 		return err
 	}
 	return nil
@@ -102,7 +103,7 @@ func main() {
 	}
 	f.Close()
 
-	resp, err := http.Get("https://api.github.com/repos/vim-jp/issues/issues")
+	resp, err := http.Get(issuesURL)
 	if err != nil {
 		log.Fatal(err)
 	}
