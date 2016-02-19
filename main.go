@@ -65,14 +65,14 @@ func postTweet(token *oauth.Credentials, status string) error {
 	param := make(url.Values)
 	param.Set("status", status)
 	oauthClient.SignParam(token, "POST", updateURL, param)
-	res, err := http.PostForm(updateURL, url.Values(param))
+	resp, err := http.PostForm(updateURL, url.Values(param))
 	if err != nil {
 		log.Println("failed to post tweet:", err)
 		return err
 	}
-	defer res.Body.Close()
-	if res.StatusCode != 200 {
-		log.Println("failed to post tweet:", err)
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		log.Println("failed to post tweet")
 		return err
 	}
 	return nil
@@ -80,18 +80,25 @@ func postTweet(token *oauth.Credentials, status string) error {
 
 func main() {
 	flag.Parse()
-	var token oauth.Credentials
 	var oldIssues, newIssues []Issue
 
+	config := map[string]string{}
 	f, err := os.Open(*configFile)
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = json.NewDecoder(f).Decode(&token)
+	err = json.NewDecoder(f).Decode(&config)
 	if err != nil {
 		log.Fatal(err)
 	}
 	f.Close()
+
+	oauthClient.Credentials.Token = config["ClientToken"]
+	oauthClient.Credentials.Secret = config["ClientSecret"]
+	token := &oauth.Credentials{
+		Token: config["AccessToken"],
+		Secret: config["AccessSecret"],
+	}
 
 	f, err = os.Open(*issuesFile)
 	if err != nil {
@@ -132,7 +139,7 @@ func main() {
 			status := fmt.Sprintf("Issue %d: %s %s #vimeditor", newIssue.Number, newIssue.Title, newIssue.HtmlURL)
 			log.Println(status)
 			if !*dry && !*silent {
-				err = postTweet(&token, status)
+				err = postTweet(token, status)
 				if err != nil {
 					log.Println(err)
 				}
