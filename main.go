@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -16,11 +17,16 @@ const (
 	updateURL = "https://api.twitter.com/1.1/statuses/update.json"
 )
 
-var oauthClient = oauth.Client{
-	TemporaryCredentialRequestURI: "https://api.twitter.com/oauth/request_token",
-	ResourceOwnerAuthorizationURI: "https://api.twitter.com/oauth/authenticate",
-	TokenRequestURI:               "https://api.twitter.com/oauth/access_token",
-}
+var (
+	oauthClient = oauth.Client{
+		TemporaryCredentialRequestURI: "https://api.twitter.com/oauth/request_token",
+		ResourceOwnerAuthorizationURI: "https://api.twitter.com/oauth/authenticate",
+		TokenRequestURI:               "https://api.twitter.com/oauth/access_token",
+	}
+	dry        = flag.Bool("dry", false, "dry-run")
+	configFile = flag.String("c", "config.json", "path to config.json")
+	issuesFile = flag.String("f", "issues.json", "path to issues.json")
+)
 
 type Issue struct {
 	URL           string `json:"url"`
@@ -71,10 +77,11 @@ func postTweet(token *oauth.Credentials, status string) error {
 }
 
 func main() {
+	flag.Parse()
 	var token oauth.Credentials
 	var oldIssues, newIssues []Issue
 
-	f, err := os.Open("config.json")
+	f, err := os.Open(*configFile)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -84,7 +91,7 @@ func main() {
 	}
 	f.Close()
 
-	f, err = os.Open("issues.json")
+	f, err = os.Open(*issuesFile)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -122,9 +129,11 @@ func main() {
 
 			status := fmt.Sprintf("Issue %d: %s %s #vimeditor", newIssue.Number, newIssue.Title, newIssue.HtmlURL)
 			log.Println(status)
-			err = postTweet(&token, status)
-			if err != nil {
-				log.Println(err)
+			if !*dry {
+				err = postTweet(&token, status)
+				if err != nil {
+					log.Println(err)
+				}
 			}
 		}
 	}
@@ -138,5 +147,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	ioutil.WriteFile("issues.json", b, 0644)
+	if !*dry {
+		ioutil.WriteFile(*issuesFile, b, 0644)
+	}
 }
