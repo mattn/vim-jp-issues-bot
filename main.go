@@ -25,7 +25,7 @@ var (
 		TokenRequestURI:               "https://api.twitter.com/oauth/access_token",
 	}
 	dry        = flag.Bool("dry", false, "dry-run")
-	silent        = flag.Bool("s", false, "no post")
+	silent     = flag.Bool("s", false, "no post")
 	configFile = flag.String("c", "config.json", "path to config.json")
 	issuesFile = flag.String("f", "issues.json", "path to issues.json")
 )
@@ -96,7 +96,7 @@ func main() {
 	oauthClient.Credentials.Token = config["ClientToken"]
 	oauthClient.Credentials.Secret = config["ClientSecret"]
 	token := &oauth.Credentials{
-		Token: config["AccessToken"],
+		Token:  config["AccessToken"],
 		Secret: config["AccessSecret"],
 	}
 
@@ -137,6 +137,10 @@ func main() {
 			updated++
 
 			status := fmt.Sprintf("Issue %d: %s %s #vimeditor", newIssue.Number, newIssue.Title, newIssue.HtmlURL)
+			runes := []rune(status)
+			if len(runes) > 140 {
+				status = fmt.Sprintf("Issue %d: %s %s #vimeditor", newIssue.Number, string(newIssue.Title[:len(newIssue.Title)-len(runes)+140]), newIssue.HtmlURL)
+			}
 			log.Println(status)
 			if !*dry && !*silent {
 				err = postTweet(token, status)
