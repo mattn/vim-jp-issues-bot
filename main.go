@@ -1,17 +1,29 @@
 package main
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/garyburd/go-oauth/oauth"
+	_ "github.com/lib/pq"
+	"github.com/uptrace/bun"
+	"github.com/uptrace/bun/dialect/pgdialect"
 )
+
+const name = "vim-jp-issues-bot"
+
+const version = "0.0.0"
+
+var revision = "HEAD"
 
 const (
 	updateURL = "https://api.twitter.com/1.1/statuses/update.json"
@@ -29,6 +41,14 @@ var (
 	configFile = flag.String("c", "config.json", "path to config.json")
 	issuesFile = flag.String("f", "issues.json", "path to issues.json")
 )
+
+type GitHubIssue struct {
+	bun.BaseModel `bun:"table:vim_jp_issue,alias:f"`
+
+	ID        int       `bun:"id,pk,notnull" json:"id"`
+	Number    int       `bun:"number,notnull" json:"number"`
+	CreatedAt time.Time `bun:"created_at,notnull,default:current_timestamp" json:"created_at"`
+}
 
 type Issue struct {
 	URL           string `json:"url"`
@@ -79,88 +99,88 @@ func postTweet(token *oauth.Credentials, status string) error {
 }
 
 func main() {
+	var skip bool
+	var dsn string
+	var clientToken, clientSecret, accessToken, accessSecret string
+	var ver bool
+
+	flag.BoolVar(&skip, "skip", false, "Skip tweet")
+	flag.StringVar(&dsn, "dsn", os.Getenv("FEED2TWITTER_DSN"), "Database source")
+	flag.StringVar(&clientToken, "client-token", os.Getenv("FEED2TWITTER_CLIENT_TOKEN"), "Twitter ClientToken")
+	flag.StringVar(&clientSecret, "client-secret", os.Getenv("FEED2TWITTER_CLIENT_SECRET"), "Twitter ClientSecret")
+	flag.StringVar(&accessToken, "access-token", os.Getenv("FEED2TWITTER_ACCESS_TOKEN"), "Twitter AccessToken")
+	flag.StringVar(&accessSecret, "access-secret", os.Getenv("FEED2TWITTER_ACCESS_SECRET"), "Twitter AccessSecret")
+	flag.BoolVar(&ver, "v", false, "show version")
 	flag.Parse()
-	var oldIssues, newIssues []Issue
 
-	config := map[string]string{}
-	f, err := os.Open(*configFile)
-	if err != nil {
-		log.Fatal(err)
+	if ver {
+		fmt.Println(version)
+		os.Exit(0)
 	}
-	err = json.NewDecoder(f).Decode(&config)
-	if err != nil {
-		log.Fatal(err)
-	}
-	f.Close()
 
-	oauthClient.Credentials.Token = config["ClientToken"]
-	oauthClient.Credentials.Secret = config["ClientSecret"]
+	oauthClient.Credentials.Token = clientToken
+	oauthClient.Credentials.Secret = clientSecret
 	token := &oauth.Credentials{
-		Token:  config["AccessToken"],
-		Secret: config["AccessSecret"],
+		Token:  accessToken,
+		Secret: accessSecret,
 	}
 
-	f, err = os.Open(*issuesFile)
+	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = json.NewDecoder(f).Decode(&oldIssues)
+
+	bundb := bun.NewDB(db, pgdialect.New())
+	defer bundb.Close()
+
+	_, err = bundb.NewCreateTable().Model((*GitHubIssue)(nil)).IfNotExists().Exec(context.Background())
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
+		return
 	}
-	f.Close()
+
+	flag.Parse()
+	var issues []Issue
 
 	resp, err := http.Get(issuesURL)
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = json.NewDecoder(resp.Body).Decode(&newIssues)
+	err = json.NewDecoder(resp.Body).Decode(&issues)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	for i, j := 0, len(newIssues)-1; i < j; i, j = i+1, j-1 {
-		newIssues[i], newIssues[j] = newIssues[j], newIssues[i]
+	for i, j := 0, len(issues)-1; i < j; i, j = i+1, j-1 {
+		issues[i], issues[j] = issues[j], issues[i]
 	}
 
-	updated := 0
-	for _, newIssue := range newIssues {
-		exists := false
-		for _, oldIssue := range oldIssues {
-			if newIssue.ID == oldIssue.ID {
-				exists = true
-				break
-			}
+	for _, issue := range issues {
+		gi := GitHubIssue{
+			ID:     issue.ID,
+			Number: issue.Number,
 		}
-		if !exists {
-			oldIssues = append(oldIssues, newIssue)
-			updated++
-
-			status := fmt.Sprintf("Issue %d: %s %s #vimeditor", newIssue.Number, newIssue.Title, newIssue.HtmlURL)
-			runes := []rune(status)
-			if len(runes) > 140 {
-				status = fmt.Sprintf("Issue %d: %s %s #vimeditor", newIssue.Number, string(newIssue.Title[:len(newIssue.Title)-len(runes)+140]), newIssue.HtmlURL)
+		_, err := bundb.NewInsert().Model(&gi).Exec(context.Background())
+		if err != nil {
+			if !strings.Contains(err.Error(), "duplicate key value violates unique constraint") {
+				log.Println(err)
 			}
-			log.Println(status)
-			if !*dry && !*silent {
-				err = postTweet(token, status)
-				if err != nil {
-					log.Println(err)
-				}
-			}
+			continue
 		}
-	}
 
-	if updated == 0 {
-		return
-	}
-
-	b, err := json.MarshalIndent(oldIssues, "", "  ")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	if !*dry {
-		ioutil.WriteFile(*issuesFile, b, 0644)
+		content := fmt.Sprintf("Issue %d: %s %s #vimeditor", issue.Number, issue.Title, issue.HtmlURL)
+		runes := []rune(content)
+		if len(runes) > 140 {
+			content = fmt.Sprintf("Issue %d: %s %s #vimeditor", issue.Number, string(issue.Title[:len(issue.Title)-len(runes)+140]), issue.HtmlURL)
+		}
+		if skip {
+			log.Printf("%q", content)
+			continue
+		}
+		err = postTweet(token, content)
+		if err != nil {
+			log.Println(err)
+			continue
+		}
 	}
 }
