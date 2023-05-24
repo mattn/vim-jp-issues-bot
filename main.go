@@ -21,7 +21,7 @@ import (
 
 const name = "vim-jp-issues-bot"
 
-const version = "0.0.0"
+const version = "0.0.1"
 
 var revision = "HEAD"
 
