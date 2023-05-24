@@ -105,11 +105,11 @@ func main() {
 	var ver bool
 
 	flag.BoolVar(&skip, "skip", false, "Skip tweet")
-	flag.StringVar(&dsn, "dsn", os.Getenv("FEED2TWITTER_DSN"), "Database source")
-	flag.StringVar(&clientToken, "client-token", os.Getenv("FEED2TWITTER_CLIENT_TOKEN"), "Twitter ClientToken")
-	flag.StringVar(&clientSecret, "client-secret", os.Getenv("FEED2TWITTER_CLIENT_SECRET"), "Twitter ClientSecret")
-	flag.StringVar(&accessToken, "access-token", os.Getenv("FEED2TWITTER_ACCESS_TOKEN"), "Twitter AccessToken")
-	flag.StringVar(&accessSecret, "access-secret", os.Getenv("FEED2TWITTER_ACCESS_SECRET"), "Twitter AccessSecret")
+	flag.StringVar(&dsn, "dsn", os.Getenv("VIM_JP_ISSUES_BOT_DSN"), "Database source")
+	flag.StringVar(&clientToken, "client-token", os.Getenv("VIM_JP_ISSUES_BOT_CLIENT_TOKEN"), "Twitter ClientToken")
+	flag.StringVar(&clientSecret, "client-secret", os.Getenv("VIM_JP_ISSUES_BOT_CLIENT_SECRET"), "Twitter ClientSecret")
+	flag.StringVar(&accessToken, "access-token", os.Getenv("VIM_JP_ISSUES_BOT_ACCESS_TOKEN"), "Twitter AccessToken")
+	flag.StringVar(&accessSecret, "access-secret", os.Getenv("VIM_JP_ISSUES_BOT_ACCESS_SECRET"), "Twitter AccessSecret")
 	flag.BoolVar(&ver, "v", false, "show version")
 	flag.Parse()
 
